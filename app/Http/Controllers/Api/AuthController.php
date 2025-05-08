@@ -26,8 +26,7 @@ class AuthController extends Controller
             'email' => 'required|string|email|max:255|unique:users',
             'password' => [
                 'required',
-                'confirmed',
-                Password::min(8)                    
+                Password::min(8)
             ],
             'role' => 'required|in:Teacher,Student',
             'phone' => 'nullable|string|max:20',
