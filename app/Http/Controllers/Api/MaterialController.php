@@ -125,4 +125,58 @@ class MaterialController extends Controller
             ]
         ], Response::HTTP_OK);
     }
+
+    /**
+     * Get all materials for a specific class
+     * 
+     * @param int $class_id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getMaterialsInClass($class_id)
+    {
+        // Find the class
+        $classRoom = ClassRoom::findOrFail($class_id);
+        
+        // Check if user has access to the class
+        $hasAccess = false;
+        
+        if (Auth::user()->role === 'Teacher') {
+            // Teachers have access if they created the class
+            $hasAccess = $classRoom->created_by === Auth::id();
+        } else {
+            // Students only have access to classes they've enrolled in
+            $hasAccess = ClassEnrollment::where('class_id', $class_id)
+                ->where('user_id', Auth::id())
+                ->exists();
+        }
+        
+        if (!$hasAccess) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'You do not have access to this class.'
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        // Get all materials for this class
+        $materials = Material::where('class_id', $class_id)
+            ->orderBy('created_at', 'desc')
+            ->get();
+        
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'class_id' => $class_id,
+                'class_name' => $classRoom->name,
+                'materials' => $materials->map(function($material) {
+                    return [
+                        'material_id' => $material->material_id,
+                        'title' => $material->title,
+                        'description' => $material->description,
+                        'created_at' => $material->created_at,
+                        'updated_at' => $material->updated_at
+                    ];
+                })
+            ]
+        ], Response::HTTP_OK);
+    }
 }

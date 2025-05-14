@@ -39,6 +39,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/my-classes', [ClassController::class, 'getMyClasses']);
             Route::get('/other-teachers', [ClassController::class, 'getOtherTeachersClasses']);
             Route::post('/{class_id}/materials', [MaterialController::class, 'store']);                        
+            Route::get('/{class_id}/class-material', [MaterialController::class,'getMaterialsInClass']);
             Route::post('/{class_id}/assignments', [AssignmentController::class, 'createAssignment']);
             
             // Student Routes
