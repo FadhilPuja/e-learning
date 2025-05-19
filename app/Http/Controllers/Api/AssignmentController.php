@@ -147,6 +147,300 @@ class AssignmentController extends Controller
         ], Response::HTTP_OK);
     }
 
+     /**
+     * Get all assignments for a class (for teachers)
+     * 
+     * @param  int  $class_id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getClassAssignments($class_id)
+    {
+        $user = Auth::user();
+        
+        // Check if user is a teacher
+        if ($user->role !== 'Teacher') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Only teachers can view all class assignments'
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        // Check if class exists and teacher owns it
+        $classroom = ClassRoom::findOrFail($class_id);
+        
+        if ($classroom->created_by !== $user->id) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Unauthorized. You must be the teacher of this class to view all assignments'
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        // Get all assignments for the class
+        $assignments = Assignment::where('class_id', $class_id)
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($assignment) {
+                // Count submissions
+                $submissionCount = Submission::where('assignment_id', $assignment->assignment_id)->count();
+                $gradedCount = Submission::where('assignment_id', $assignment->assignment_id)
+                    ->where('status', 'graded')
+                    ->count();
+                
+                return [
+                    'assignment_id' => $assignment->assignment_id,
+                    'title' => $assignment->title,
+                    'description' => $assignment->description,
+                    'due_date' => $assignment->due_date,
+                    'file_url' => $assignment->file_url,
+                    'created_at' => $assignment->created_at,
+                    'updated_at' => $assignment->updated_at,
+                    'submission_stats' => [
+                        'total_submissions' => $submissionCount,
+                        'graded_submissions' => $gradedCount
+                    ]
+                ];
+            });
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'class_name' => $classroom->name,
+                'assignments' => $assignments
+            ]
+        ], Response::HTTP_OK);
+    }
+
+    /**
+     * Get all assignments for a class (for students)
+     * 
+     * @param  int  $class_id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getStudentClassAssignments($class_id)
+    {
+        $user = Auth::user();
+        
+        // Check if user is a student
+        if ($user->role !== 'Student') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Only students can access this endpoint'
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        // Check if class exists and student is enrolled
+        $classroom = ClassRoom::findOrFail($class_id);
+        
+        if (!$classroom->students->contains($user->id)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Unauthorized. You must be enrolled in this class to view assignments'
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        // Get all assignments for the class
+        $assignments = Assignment::where('class_id', $class_id)
+            ->orderBy('due_date', 'asc')
+            ->get()
+            ->map(function ($assignment) use ($user) {
+                // Get user's submission for this assignment if exists
+                $submission = Submission::where('assignment_id', $assignment->assignment_id)
+                    ->where('user_id', $user->id)
+                    ->first();
+                
+                $submissionData = null;
+                if ($submission) {
+                    $submissionData = [
+                        'submission_id' => $submission->submission_id,
+                        'file_url' => $submission->file_url,
+                        'submitted_at' => $submission->submitted_at,
+                        'status' => $submission->status,
+                        'score' => $submission->score,
+                        'feedback' => $submission->feedback
+                    ];
+                }
+                
+                // Check if assignment is overdue
+                $isDue = false;
+                $isOverdue = false;
+                if ($assignment->due_date) {
+                    $dueDate = Carbon::parse($assignment->due_date);
+                    $now = Carbon::now();
+                    $isDue = $now->greaterThan($dueDate);
+                    
+                    // If due and no submission, mark as overdue
+                    if ($isDue && !$submission) {
+                        $isOverdue = true;
+                    }
+                }
+                
+                return [
+                    'assignment_id' => $assignment->assignment_id,
+                    'title' => $assignment->title,
+                    'description' => $assignment->description,
+                    'due_date' => $assignment->due_date,
+                    'file_url' => $assignment->file_url,
+                    'created_at' => $assignment->created_at,
+                    'updated_at' => $assignment->updated_at,
+                    'is_due' => $isDue,
+                    'is_overdue' => $isOverdue,
+                    'submission' => $submissionData
+                ];
+            });
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'class_name' => $classroom->name,
+                'assignments' => $assignments
+            ]
+        ], Response::HTTP_OK);
+    }
+
+    /**
+     * Update an assignment (for teachers)
+     * 
+     * @param  \Illuminate\Http\Request  $request
+     * @param  int  $assignment_id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function updateAssignment(Request $request, $assignment_id)
+    {
+        // Validate request
+        $validator = Validator::make($request->all(), [
+            'title' => 'nullable|string|max:255',
+            'description' => 'nullable|string',
+            'due_date' => 'nullable|date',
+            'file' => 'nullable|file|mimes:pdf,txt,ppt,pptx,doc,docx|max:10240',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation error',
+                'errors' => $validator->errors()
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $user = Auth::user();
+        
+        // Check if user is a teacher
+        if ($user->role !== 'Teacher') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Only teachers can update assignments'
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        // Get assignment
+        $assignment = Assignment::with('classroom')->findOrFail($assignment_id);
+        
+        // Check if teacher owns the class
+        if ($assignment->classroom->created_by !== $user->id) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'You are not authorized to update assignments for this class'
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        // Handle file upload if provided
+        if ($request->hasFile('file')) {
+            // Delete old file if exists
+            if ($assignment->file_url) {
+                $oldFilePath = str_replace('/storage/', '', $assignment->file_url);
+                Storage::disk('public')->delete($oldFilePath);
+            }
+            
+            $file = $request->file('file');
+            $fileName = time() . '_' . $file->getClientOriginalName();
+            $filePath = $file->storeAs('assignments', $fileName, 'public');
+            $assignment->file_url = Storage::url($filePath);
+        }
+
+        // Update assignment
+        if ($request->has('title')) {
+            $assignment->title = $request->title;
+        }
+        
+        if ($request->has('description')) {
+            $assignment->description = $request->description;
+        }
+        
+        if ($request->has('due_date')) {
+            $assignment->due_date = $request->due_date;
+        }
+        
+        $assignment->save();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Assignment updated successfully',
+            'data' => [
+                'assignment_id' => $assignment->assignment_id,
+                'title' => $assignment->title,
+                'description' => $assignment->description,
+                'due_date' => $assignment->due_date,
+                'file_url' => $assignment->file_url,
+                'room_id' => $assignment->class_id,
+                'updated_at' => $assignment->updated_at
+            ]
+        ], Response::HTTP_OK);
+    }
+
+    /**
+     * Delete an assignment (for teachers)
+     * 
+     * @param  int  $assignment_id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function deleteAssignment($assignment_id)
+    {
+        $user = Auth::user();
+        
+        // Check if user is a teacher
+        if ($user->role !== 'Teacher') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Only teachers can delete assignments'
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        // Get assignment
+        $assignment = Assignment::with('classroom')->findOrFail($assignment_id);
+        
+        // Check if teacher owns the class
+        if ($assignment->classroom->created_by !== $user->id) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'You are not authorized to delete assignments for this class'
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        // Check if there are submissions
+        $submissionsExist = Submission::where('assignment_id', $assignment_id)->exists();
+        
+        if ($submissionsExist) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Cannot delete assignment with existing submissions'
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
+        // Delete file if exists
+        if ($assignment->file_url) {
+            $filePath = str_replace('/storage/', '', $assignment->file_url);
+            Storage::disk('public')->delete($filePath);
+        }
+
+        // Delete assignment
+        $assignment->delete();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Assignment deleted successfully'
+        ], Response::HTTP_OK);
+    }
+
     /**
      * Submit an assignment (for students)
      * 

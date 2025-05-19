@@ -62,6 +62,110 @@ class ClassController extends Controller
         ], Response::HTTP_CREATED);
     }
 
+        /**
+     * Update an existing class (Teacher only)
+     * 
+     * @param Request $request
+     * @param int $classId
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function update(Request $request, $classId)
+    {
+        // Validate user is a teacher
+        if (Auth::user()->role !== 'Teacher') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Only teachers can update classes'
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        // Find the class
+        $class = ClassRoom::find($classId);
+
+        if (!$class) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Class not found'
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        // Check if the teacher owns this class
+        if ($class->created_by !== Auth::id()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'You can only update your own classes'
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        // Validate the request
+        $validated = $request->validate([
+            'name' => 'sometimes|required|string|max:255',
+            'description' => 'nullable|string'
+        ]);
+
+        // Update the class
+        $class->update([
+            'name' => $validated['name'] ?? $class->name,
+            'description' => $validated['description'] ?? $class->description
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Class updated successfully',
+            'data' => [
+                'class_id' => $class->class_id,
+                'name' => $class->name,
+                'description' => $class->description,
+                'unique_code' => $class->unique_code,
+                'created_by' => $class->created_by,
+                'updated_at' => $class->updated_at
+            ]
+        ]);
+    }
+
+    /**
+     * Delete a class (Teacher only)
+     * 
+     * @param int $classId
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function delete($classId)
+    {
+        // Validate user is a teacher
+        if (Auth::user()->role !== 'Teacher') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Only teachers can delete classes'
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        // Find the class
+        $class = ClassRoom::find($classId);
+
+        if (!$class) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Class not found'
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        // Check if the teacher owns this class
+        if ($class->created_by !== Auth::id()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'You can only delete your own classes'
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        // Delete the class (this should cascade delete enrollments if set up in the migration)
+        $class->delete();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Class deleted successfully'
+        ]);
+    }
+
     /**
      * Get all classes created by the authenticated teacher
      * 
@@ -275,14 +379,14 @@ class ClassController extends Controller
     }
 
     /**
-     * Leave a class (Student only)
+     * Leave a class that the student has enrolled in (Student only)
      * 
-     * @param int $classId
+     * @param int $classId The ID of the class to leave
      * @return \Illuminate\Http\JsonResponse
      */
     public function leaveClass($classId)
     {
-        // Validate user is a student
+        // Validate that the authenticated user is a student
         if (Auth::user()->role !== 'Student') {
             return response()->json([
                 'status' => 'error',
@@ -290,7 +394,7 @@ class ClassController extends Controller
             ], Response::HTTP_FORBIDDEN);
         }
 
-        // Check if class exists
+        // Check if the specified class exists
         $class = ClassRoom::find($classId);
         if (!$class) {
             return response()->json([
@@ -299,7 +403,7 @@ class ClassController extends Controller
             ], Response::HTTP_NOT_FOUND);
         }
 
-        // Check if enrolled
+        // Check if the student is actually enrolled in this class
         $enrollment = ClassEnrollment::where('class_id', $classId)
             ->where('user_id', Auth::id())
             ->first();
@@ -311,7 +415,7 @@ class ClassController extends Controller
             ], Response::HTTP_BAD_REQUEST);
         }
 
-        // Delete enrollment
+        // Delete the enrollment record to leave the class
         $enrollment->delete();
 
         return response()->json([

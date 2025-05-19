@@ -41,10 +41,13 @@ Route::prefix('v1')->group(function () {
             Route::post('/{class_id}/materials', [MaterialController::class, 'store']);                        
             Route::get('/{class_id}/class-material', [MaterialController::class,'getMaterialsInClass']);
             Route::post('/{class_id}/assignments', [AssignmentController::class, 'createAssignment']);
+            Route::put('/update/{class_id}', [ClassController::class, 'update']);
+            Route::delete('/delete/{class_id}', [ClassController::class, 'delete']);
             
             // Student Routes
             Route::get('/available', [ClassController::class, 'getAvailableClasses']);
             Route::get('/enrolled', [ClassController::class, 'getEnrolledClasses']);
+            Route::get('/{class_id}/student-material', [MaterialController::class,'getMaterialsForStudent']);
             Route::post('/join', [ClassController::class, 'joinClass']);
             Route::post('/{class_id}/leave', [ClassController::class, 'leaveClass']);
             
@@ -54,6 +57,8 @@ Route::prefix('v1')->group(function () {
 
         Route::prefix('materials')->group(function () {
             Route::get('/{material_id}', [MaterialController::class, 'show']);
+            Route::put('/update/{material_id}', [MaterialController::class, 'update']);
+            Route::delete('/delete/{material_id}', [MaterialController::class, 'destroy']);
         });
         
         // Assignment Management Routes
@@ -61,6 +66,10 @@ Route::prefix('v1')->group(function () {
             Route::get('/{assignment_id}', [AssignmentController::class, 'getAssignment']);
             Route::post('/{assignment_id}/submit', [AssignmentController::class, 'submitAssignment']);
             Route::get('/{assignment_id}/submissions', [AssignmentController::class, 'getSubmissions']);
+            Route::get('/class/{class_id}', [AssignmentController::class, 'getClassAssignments']);
+            Route::get('/class/{class_id}/student-assignments', [AssignmentController::class, 'getStudentClassAssignments']);
+            Route::put('/update/{assigment_id}', [AssignmentController::class, 'updateAssignment']);
+            Route::delete('/delete/{assigment_id}', [AssignmentController::class, 'deleteAssignment']);
         });
         
         // Submission Management Routes
