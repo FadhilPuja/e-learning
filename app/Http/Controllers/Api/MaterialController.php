@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Material;
 use App\Models\ClassRoom;
 use App\Models\ClassEnrollment;
+use Exception;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
@@ -184,44 +186,67 @@ class MaterialController extends Controller
      */
     public function show($material_id)
     {
-        // Find the material
-        $material = Material::findOrFail($material_id);
-        
-        // Get the class for this material
-        $classRoom = ClassRoom::findOrFail($material->class_id);
-        
-        // Check if user has access to the class
-        $hasAccess = false;
-        
-        if (Auth::user()->role === 'Teacher') {
-            // Teachers have access if they created the class
-            $hasAccess = $classRoom->created_by === Auth::id();
-        } else {
-            // Students only have access to classes they've enrolled in
-            $hasAccess = ClassEnrollment::where('class_id', $material->class_id)
-                ->where('user_id', Auth::id())
-                ->exists();
-        }
-        
-        if (!$hasAccess) {
+        try {
+            // Validate material_id is numeric (optional)
+            if (!is_numeric($material_id)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid material ID format.'
+                ], Response::HTTP_BAD_REQUEST);
+            }
+            
+            // Find the material with class relationship (eager loading)
+            $material = Material::with('class')->findOrFail($material_id);
+            
+            // Get the class for this material
+            $classRoom = $material->class; // Using relationship instead of separate query
+            
+            // Check if user has access to the class
+            $hasAccess = false;
+            $user = Auth::user();
+            
+            if ($user->role === 'Teacher') {
+                // Teachers have access if they created the class
+                $hasAccess = $classRoom->created_by === $user->id;
+            } else {
+                // Students only have access to classes they've enrolled in
+                $hasAccess = ClassEnrollment::where('class_id', $material->class_id)
+                    ->where('user_id', $user->id)
+                    ->exists();
+            }
+            
+            if (!$hasAccess) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'You do not have access to this material.'
+                ], Response::HTTP_FORBIDDEN);
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'data' => [
+                    'material_id' => $material->material_id,
+                    'title' => $material->title,
+                    'description' => $material->description,
+                    'content' => $material->content,
+                    'class_id' => $material->class_id,
+                    'class_name' => $classRoom->name, // Added class name
+                    'created_at' => $material->created_at,
+                    'updated_at' => $material->updated_at
+                ]
+            ], Response::HTTP_OK);
+            
+        } catch (ModelNotFoundException $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'You do not have access to this material.'
-            ], Response::HTTP_FORBIDDEN);
+                'message' => 'Material not found.'
+            ], Response::HTTP_NOT_FOUND);
+        } catch (Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'An error occurred while retrieving the material.'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
-
-        return response()->json([
-            'status' => 'success',
-            'data' => [
-                'material_id' => $material->material_id,
-                'title' => $material->title,
-                'description' => $material->description,
-                'content' => $material->content,
-                'class_id' => $material->class_id,
-                'created_at' => $material->created_at,
-                'updated_at' => $material->updated_at
-            ]
-        ], Response::HTTP_OK);
     }
 
     /**

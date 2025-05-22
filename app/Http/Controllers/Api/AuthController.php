@@ -117,15 +117,15 @@ class AuthController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\JsonResponse
      */
-        // public function me(Request $request)
-        // {
-        //     return response()->json([
-        //         'success' => true,
-        //         'data' => [
-        //             'user' => $request->user()
-        //         ]
-        //     ]);
-        // }
+        public function me(Request $request)
+        {
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'user' => $request->user()
+                ]
+            ]);
+        }
 
     /**
      * Log the user out (Invalidate the token)
