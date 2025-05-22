@@ -187,7 +187,7 @@ class MaterialController extends Controller
     public function show($material_id)
     {
         try {
-            // Validate material_id is numeric
+            // Validate material_id is numeric (optional)
             if (!is_numeric($material_id)) {
                 return response()->json([
                     'status' => 'error',
@@ -195,41 +195,20 @@ class MaterialController extends Controller
                 ], Response::HTTP_BAD_REQUEST);
             }
             
-            // Check if user is authenticated
-            $user = Auth::user();
-            if (!$user) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'User not authenticated.'
-                ], Response::HTTP_UNAUTHORIZED);
-            }
-            
             // Find the material with class relationship (eager loading)
-            $material = Material::with('class')->find($material_id);
+            $material = Material::with('classroom')->findOrFail($material_id);
             
-            if (!$material) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Material not found.'
-                ], Response::HTTP_NOT_FOUND);
-            }
-            
-            // Check if the class relationship exists
-            $classRoom = $material->class;
-            if (!$classRoom) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Associated class not found.'
-                ], Response::HTTP_NOT_FOUND);
-            }
+            // Get the class for this material
+            $classRoom = $material->class; // Using relationship instead of separate query
             
             // Check if user has access to the class
             $hasAccess = false;
+            $user = Auth::user();
             
             if ($user->role === 'Teacher') {
                 // Teachers have access if they created the class
                 $hasAccess = $classRoom->created_by === $user->id;
-            } elseif ($user->role === 'Student') {
+            } else {
                 // Students only have access to classes they've enrolled in
                 $hasAccess = ClassEnrollment::where('class_id', $material->class_id)
                     ->where('user_id', $user->id)
@@ -252,21 +231,21 @@ class MaterialController extends Controller
                     'content' => $material->content,
                     'class_id' => $material->class_id,
                     'class_name' => $classRoom->name,
-                    'created_at' => $material->created_at->toISOString(),
-                    'updated_at' => $material->updated_at->toISOString()
+                    'created_at' => $material->created_at,
+                    'updated_at' => $material->updated_at
                 ]
             ], Response::HTTP_OK);
             
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Material not found.'
+            ], Response::HTTP_NOT_FOUND);
         } catch (Exception $e) {
-            // Debug the actual error
-            dd([
-                'error_message' => $e->getMessage(),
-                'error_line' => $e->getLine(),
-                'error_file' => $e->getFile(),
-                'material_id' => $material_id,
-                'user_id' => Auth::id(),
-                'user_role' => Auth::user()?->role ?? 'No user'
-            ]);
+            return response()->json([
+                'status' => 'error',
+                'message' => 'An error occurred while retrieving the material.'
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
