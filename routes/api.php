@@ -24,6 +24,7 @@ Route::prefix('v1')->group(function () {
     Route::prefix('auth')->group(function () {
         Route::post('/register', [AuthController::class, 'register']);
         Route::post('/login', [AuthController::class, 'login']);
+        Route::post('/remember-me', [AuthController::class, 'remember_me']);
     });
     
     // Protected Routes (Requires Authentication)

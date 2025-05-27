@@ -204,7 +204,7 @@ class MaterialController extends Controller
                 ], Response::HTTP_UNAUTHORIZED);
             }
             
-            // Find the material with classroom relationship (eager loading)
+            // Find the material with classroom relationship
             $material = Material::with('classroom')->find($material_id);
             
             if (!$material) {
@@ -214,10 +214,9 @@ class MaterialController extends Controller
                 ], Response::HTTP_NOT_FOUND);
             }
             
-            // Get the classroom for this material - FIXED: using 'classroom' instead of 'class'
+            // Get the classroom for this material 
             $classRoom = $material->classroom;
-            
-            // Check if the classroom relationship exists
+                        
             if (!$classRoom) {
                 return response()->json([
                     'status' => 'error',
