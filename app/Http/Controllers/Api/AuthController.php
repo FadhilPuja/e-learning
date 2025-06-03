@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\PersonalAccessToken;
+use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
@@ -86,13 +87,13 @@ class AuthController extends Controller
             ], 422);
         }
 
-        // Attempt to find user with matching email and role
+        // Attempt to find user with matching email
         $user = User::where('email', $request->email)->first();
 
         // Check if user exists and password is correct
         if (!$user || !Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
-                'email' => ['The provided credentials are incorrect or you are not authorized as ' . $request->role],
+                'email' => ['The provided credentials are incorrect'],
             ]);
         }
 
@@ -102,18 +103,38 @@ class AuthController extends Controller
         // Create tokens based on remember_me
         $tokenName = 'auth_token';
         $abilities = ['*'];
+        $refreshToken = null;
         
         if ($request->remember_me) {
+            // Generate remember token dan simpan ke database
+            $rememberTokenValue = \Illuminate\Support\Str::random(100);
+            
+            // Update user dengan remember token (tidak di-hash untuk testing)
+            $user->remember_token = $rememberTokenValue;
+            $user->save();
+            
+            // Atau bisa juga pakai cara ini:
+            // $user->update(['remember_token' => $rememberTokenValue]);
+            
+            // Log untuk debugging
+            \Log::info('Remember token saved: ' . $rememberTokenValue);
+            
             // Create access token (2 hours)
             $token = $user->createToken($tokenName, $abilities, now()->addHours(2))->plainTextToken;
             
-            // Create refresh token for 7 days
+            // Create refresh token for 1 day
             $refreshToken = $user->createToken('refresh_token', ['refresh'], now()->addDays(1))->plainTextToken;
         } else {
+            // Clear remember token if not using remember me
+            $user->remember_token = null;
+            $user->save();
+            
             // Create standard token (1 hour)
             $token = $user->createToken($tokenName, $abilities, now()->addHour())->plainTextToken;
-            $refreshToken = null;
         }
+
+        // Refresh user data from database
+        $user->refresh();
 
         $response = [
             'success' => true,
@@ -121,7 +142,8 @@ class AuthController extends Controller
             'data' => [
                 'user' => $user,
                 'token' => $token,
-                'token_type' => 'Bearer'
+                'token_type' => 'Bearer',
+                'remember_me_status' => $request->remember_me ? 'enabled' : 'disabled'
             ]
         ];
 
@@ -156,7 +178,13 @@ class AuthController extends Controller
      */
     public function logout(Request $request)
     {
+        $user = $request->user();
+        
+        // Delete current access token
         $request->user()->currentAccessToken()->delete();
+        
+        // Clear remember token
+        $user->update(['remember_token' => null]);
 
         return response()->json([
             'success' => true,
@@ -213,6 +241,14 @@ class AuthController extends Controller
             }
 
             $user = $refreshToken->tokenable;
+
+            // Verify user still has remember token (additional security check)
+            if (!$user->remember_token) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Remember me session has expired'
+                ], 401);
+            }
 
             // Delete old access tokens (keep refresh token)
             $user->tokens()->where('name', 'auth_token')->delete();
