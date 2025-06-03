@@ -556,6 +556,14 @@ class AssignmentController extends Controller
      */
     public function gradeSubmission(Request $request, $submission_id)
     {
+        // Validate submission_id is numeric
+        if (!is_numeric($submission_id) || $submission_id <= 0) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Invalid submission ID'
+            ], Response::HTTP_BAD_REQUEST);
+        }
+
         // Validate request
         $validator = Validator::make($request->all(), [
             'score' => 'required|integer|min:0|max:100',
@@ -567,7 +575,7 @@ class AssignmentController extends Controller
                 'status' => 'error',
                 'message' => 'Validation error',
                 'errors' => $validator->errors()
-            ], 422);
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         $user = Auth::user();
@@ -577,18 +585,25 @@ class AssignmentController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => 'Only teachers can grade submissions'
-            ], 403);
+            ], Response::HTTP_FORBIDDEN);
         }
 
-        // Get submission
-        $submission = Submission::with('assignment.classroom', 'student')->findOrFail($submission_id);
+        try {
+            // Get submission
+            $submission = Submission::with('assignment.classroom', 'student')->findOrFail($submission_id);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Submission not found'
+            ], Response::HTTP_NOT_FOUND);
+        }
         
         // Check if teacher owns the class
         if ($submission->assignment->classroom->created_by !== $user->id) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'You are not authorized to grade submissions for this class'
-            ], 403);
+            ], Response::HTTP_FORBIDDEN);
         }
 
         // Update submission
@@ -609,7 +624,7 @@ class AssignmentController extends Controller
                 'feedback' => $submission->feedback,
                 'graded_at' => $submission->graded_at
             ]
-        ], 200);
+        ], Response::HTTP_OK);
     }
 
     /**

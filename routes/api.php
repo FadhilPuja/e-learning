@@ -64,17 +64,20 @@ Route::prefix('v1')->group(function () {
         
         // Assignment Management Routes
         Route::prefix('assignments')->group(function () {
+            // Static routes first (before dynamic parameters)
+            Route::get('/class/{class_id}', [AssignmentController::class, 'getClassAssignments']);
+            Route::get('/class/{class_id}/student-assignments', [AssignmentController::class, 'getStudentClassAssignments']);
+            
+            // Dynamic parameter routes
             Route::get('/{assignment_id}', [AssignmentController::class, 'getAssignment']);
             Route::post('/{assignment_id}/submit', [AssignmentController::class, 'submitAssignment']);
             Route::get('/{assignment_id}/submissions', [AssignmentController::class, 'getSubmissions']);
-            Route::get('/class/{class_id}', [AssignmentController::class, 'getClassAssignments']);
-            Route::get('/class/{class_id}/student-assignments', [AssignmentController::class, 'getStudentClassAssignments']);
-            Route::put('/update/{assigment_id}', [AssignmentController::class, 'updateAssignment']);
-            Route::delete('/delete/{assigment_id}', [AssignmentController::class, 'deleteAssignment']);
+            Route::put('/update/{assignment_id}', [AssignmentController::class, 'updateAssignment']);
+            Route::delete('/delete/{assignment_id}', [AssignmentController::class, 'deleteAssignment']);
         });
         
         // Submission Management Routes
-        Route::prefix('submissions')->group(function () {
+        Route::prefix('submissions')->group(function () {            
             Route::post('/{submission_id}/grade', [AssignmentController::class, 'gradeSubmission']);
         });
     });

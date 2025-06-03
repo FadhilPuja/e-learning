@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
@@ -117,7 +118,7 @@ class AuthController extends Controller
             // $user->update(['remember_token' => $rememberTokenValue]);
             
             // Log untuk debugging
-            \Log::info('Remember token saved: ' . $rememberTokenValue);
+            Log::info('Remember token saved: ' . $rememberTokenValue);
             
             // Create access token (2 hours)
             $token = $user->createToken($tokenName, $abilities, now()->addHours(2))->plainTextToken;
